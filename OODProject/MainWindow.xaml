@@ -78,6 +78,7 @@
                            Grid.Column="1" />
             </Grid>
         </StackPanel>
+        <Button x:Name="btn_openFile" Grid.Column="1" Content="Open File" HorizontalAlignment="Left" Margin="90,44,0,0" Grid.Row="1" VerticalAlignment="Top" Height="30" Width="100" Click="btn_openFile_Click"/>
 
     </Grid>
 </Window>
