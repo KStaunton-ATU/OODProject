@@ -34,10 +34,10 @@
                            Margin="0 0 0 10" />
 
                 <ListBox Name="PlaylistListBox"
+                         SelectionChanged="PlaylistListBox_SelectionChanged"
                          Background="#333"
                          BorderThickness="0"
-                         Foreground="White"
-                         SelectedIndex="0">
+                         Foreground="White">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Border Padding="8" Margin="0 4" Background="#444" CornerRadius="4">
@@ -78,7 +78,8 @@
                            Grid.Column="1" />
             </Grid>
         </StackPanel>
-        <Button x:Name="btn_openFile" Grid.Column="1" Content="Open File" HorizontalAlignment="Left" Margin="90,44,0,0" Grid.Row="1" VerticalAlignment="Top" Height="30" Width="100" Click="btn_openFile_Click"/>
+        <Button x:Name="btn_openFile" Grid.Column="1" Content="Open File" HorizontalAlignment="Left" Margin="10,80,0,0" Grid.Row="1" VerticalAlignment="Top" Height="30" Width="100" Click="btn_openFile_Click"/>
+        <Button x:Name="btn_OpenPlaylist" Grid.Column="1" Content="Open PlayList" HorizontalAlignment="Left" Margin="141,80,0,0" Grid.Row="1" VerticalAlignment="Top" Height="30" Width="100" Click="btn_OpenPlaylist_Click"/>
 
     </Grid>
 </Window>

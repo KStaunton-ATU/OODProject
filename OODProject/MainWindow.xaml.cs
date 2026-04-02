@@ -1,4 +1,6 @@
-﻿using System.Text;
+﻿using System.Diagnostics;
+using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -9,6 +11,8 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.Window;
+using WinForms = System.Windows.Forms;
 
 namespace OODProject
 {
@@ -17,31 +21,28 @@ namespace OODProject
     /// </summary>
     public partial class MainWindow : Window
     {
-        //might need some kind of stop watch???
         //globalvariables for timer and seekbar
         private bool isDraggingSlider = false;
         private DispatcherTimer timer = new DispatcherTimer();
+        private List<MediaItem> playlist = new List<MediaItem>();
+        private int currentIndex = -1;
 
         public MainWindow()
         {
             InitializeComponent();
 
-            // Timer updates seek bar every 500 milliseconds           
+            //Timer updates seek bar every 500 milliseconds           
             timer.Interval = TimeSpan.FromMilliseconds(500);
             timer.Tick += Timer_Tick;//Setting up event via code
 
-            // MediaElement events
+            //For MediaElement 
             Player.MediaOpened += Player_MediaOpened;
             Player.MediaEnded += Player_MediaEnded;
             Player.MediaFailed += Player_MediaFailed;
-
-            // Seek bar events
+            
             SeekBar.ValueChanged += SeekBar_ValueChanged;
             SeekBar.PreviewMouseDown += SeekBar_PreviewMouseDown;
             SeekBar.PreviewMouseUp += SeekBar_PreviewMouseUp;
-
-            // Playlist event
-            PlaylistListBox.SelectionChanged += PlaylistListBox_SelectionChanged;//Setting up event via code
         }
 
 
@@ -62,10 +63,13 @@ namespace OODProject
             //Playback ended
             //Play next media file in playlist
             //or loop?
-            // Auto-play next item in playlist
-            if (PlaylistListBox.SelectedIndex < PlaylistListBox.Items.Count - 1)
+
+            //SelectionChanged is firing twice, skipping every second video. Needs to be fixed.
+            //need dedicated method to play next Video?
+            
+            if (currentIndex < playlist.Count - 1)
             {
-                PlaylistListBox.SelectedIndex++;
+                PlayNextItem();               
             }
             else
             {
@@ -74,11 +78,38 @@ namespace OODProject
             }
         }
 
+        private void PlayNextItem()
+        {
+            int nextVid = currentIndex + 1;
+
+            if (nextVid < playlist.Count)
+            {
+                currentIndex = nextVid;
+                PlaylistListBox.SelectedIndex = nextVid;
+                SeekBar.Value = 0;
+            }                
+        }
+
+        private void PlaySelectedMedia()
+        {
+            //single source for playing a file
+            //easier to track potential issues
+            //will invoke mediaopened event
+            if (currentIndex >= 0 && currentIndex < playlist.Count)
+            {
+                //set the file path and play it
+                MediaItem mi = playlist[currentIndex];
+                Player.Source = new Uri(mi.FilePath);
+                Player.Play();
+            }
+        }
+
+
         private void Player_MediaFailed(object sender, ExceptionRoutedEventArgs e)
         {
             //error handling
             //unable to play to file
-            MessageBox.Show("Unable to play this file.", "Playback Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            System.Windows.MessageBox.Show("Unable to play this file.", "Playback Error", MessageBoxButton.OK, MessageBoxImage.Error);
 
         }
 
@@ -91,19 +122,16 @@ namespace OODProject
 
         private void btnPlay_Click(object sender, RoutedEventArgs e)
         {
-            //some code
             Player.Play();
         }
 
         private void btnPause_Click(object sender, RoutedEventArgs e)
         {
-            //some code
             Player.Pause();
         }
 
         private void btnFastForward_Click(object sender, RoutedEventArgs e)
         {
-            //some code
             Player.Position += TimeSpan.FromSeconds(5);
         }
 
@@ -144,11 +172,13 @@ namespace OODProject
 
         private void PlaylistListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (PlaylistListBox.SelectedItem is MediaItem item)
+            if (PlaylistListBox.SelectedIndex >= 0)
             {
-                Player.Source = new Uri(item.FilePath);
-                Player.Play();
+                currentIndex = PlaylistListBox.SelectedIndex;   
+                PlaySelectedMedia();                              
+                Debug.WriteLine("SelectionChanged fired");
             }
+
         }
 
         private void btn_openFile_Click(object sender, RoutedEventArgs e)
@@ -158,19 +188,64 @@ namespace OODProject
 
             if (dialog.ShowDialog() == true)
             {
-                // Create a new MediaItem
+                //Simplify as MediaItem
                 var item = new MediaItem
                 {
                     Title = System.IO.Path.GetFileName(dialog.FileName),
                     FilePath = dialog.FileName
                 };
 
-                // Add to playlist
-                PlaylistListBox.Items.Add(item);
+                //Add to playlist
+                playlist.Clear();
+                playlist.Add(item);
+                RefreshSource();
 
-                // Auto-select and play it
-                PlaylistListBox.SelectedItem = item;
+                //trigger selection changed event and start playback
+                currentIndex = playlist.Count - 1;
+                PlaylistListBox.SelectedIndex = currentIndex;
             }
+        }
+
+        private void btn_OpenPlaylist_Click(object sender, RoutedEventArgs e)
+        {
+            //using Sytem.Windows.Forms
+            var dialog = new WinForms.FolderBrowserDialog();
+
+            if (dialog.ShowDialog() == WinForms.DialogResult.OK)
+            {
+                string selectedFolder = dialog.SelectedPath;
+
+                //clear playlist and search for media files
+                playlist.Clear();
+
+                string[] extensions = { ".mp4", ".mp3", ".wav", ".wmv", ".avi", ".mkv" };
+
+                //search for media files in the selected folder
+                var files = Directory.GetFiles(selectedFolder)
+                                     .Where(f => extensions.Contains(System.IO.Path.GetExtension(f).ToLower()));
+
+                //now turn them into MediaItems
+                MediaItem mi;
+                foreach (var file in files)
+                {
+                    mi = new MediaItem
+                    {
+                        Title = System.IO.Path.GetFileName(file),
+                        FilePath = file
+                    };
+                    playlist.Add(mi);
+                }
+                RefreshSource();
+                currentIndex = 0;
+                PlaylistListBox.SelectedIndex = 0;
+            }
+
+        }
+
+        private void RefreshSource()
+        {
+            PlaylistListBox.ItemsSource = null;
+            PlaylistListBox.ItemsSource = playlist;
         }
     }
 
