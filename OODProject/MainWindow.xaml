@@ -51,6 +51,7 @@
 
         <StackPanel Grid.Column="0" Grid.Row="1" Orientation="Vertical" Margin="0 10 0 0">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0 0 0 10">
+                <Button x:Name="btnLoop" Content="🔁" Width="50" Height="40" Margin="5" Click="btnLoop_Click" />
                 <Button x:Name="btnRewind" Content="⏪" Width="50" Height="40" Margin="5" Click="btnRewind_Click" />
                 <Button x:Name="btnPlay" Content="▶" Width="50" Height="40" Margin="5" Click="btnPlay_Click" />
                 <Button x:Name="btnPause" Content="⏸" Width="50" Height="40" Margin="5" Click="btnPause_Click" />

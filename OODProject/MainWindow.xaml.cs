@@ -21,11 +21,12 @@ namespace OODProject
     /// </summary>
     public partial class MainWindow : Window
     {
-        //globalvariables for timer and seekbar
+        //global variables 
         private bool isDraggingSlider = false;
         private DispatcherTimer timer = new DispatcherTimer();
         private List<MediaItem> playlist = new List<MediaItem>();
-        private int currentIndex = -1;
+        private int currentIndex = -1;//no file selected at start
+        private bool loopEnabled = false;
 
         public MainWindow()
         {
@@ -60,21 +61,26 @@ namespace OODProject
 
         private void Player_MediaEnded(object sender, RoutedEventArgs e)
         {
-            //Playback ended
-            //Play next media file in playlist
-            //or loop?
+            SeekBar.Value = 0;
 
-            //SelectionChanged is firing twice, skipping every second video. Needs to be fixed.
-            //need dedicated method to play next Video?
-            
+            //Playback ended
+            //Play next media file in playlist            
             if (currentIndex < playlist.Count - 1)
             {
                 PlayNextItem();               
             }
             else
             {
-                Player.Stop();
-                SeekBar.Value = 0;
+                //loop the playlist/single file
+                if (loopEnabled && playlist.Count > 0)
+                {
+                    currentIndex = 0;
+                    PlaylistListBox.SelectedIndex = 0;   // triggers playback
+                }
+                else
+                {
+                    Player.Stop();
+                }
             }
         }
 
@@ -85,8 +91,8 @@ namespace OODProject
             if (nextVid < playlist.Count)
             {
                 currentIndex = nextVid;
-                PlaylistListBox.SelectedIndex = nextVid;
                 SeekBar.Value = 0;
+                PlaylistListBox.SelectedIndex = nextVid;                
             }                
         }
 
@@ -107,15 +113,12 @@ namespace OODProject
 
         private void Player_MediaFailed(object sender, ExceptionRoutedEventArgs e)
         {
-            //error handling
-            //unable to play to file
-            System.Windows.MessageBox.Show("Unable to play this file.", "Playback Error", MessageBoxButton.OK, MessageBoxImage.Error);
-
+            //error handling - unable to play to file
+            System.Windows.MessageBox.Show("Unable to play this file.", "Playback Error", MessageBoxButton.OK);
         }
 
         private void btnRewind_Click(object sender, RoutedEventArgs e)
         {
-            //some code
             //get current timestamp and rewind 5000 milliseconds
             Player.Position -= TimeSpan.FromSeconds(5);
         }
@@ -139,7 +142,8 @@ namespace OODProject
         {
             //Update textbox with timestamp
             //Constantly executing
-            //Jump to a certain point in the video if user gives input
+            //slider is always in sync with video
+            //slider position determines point of video playback
             if (!isDraggingSlider)
             {
                 Player.Position = TimeSpan.FromSeconds(SeekBar.Value);
@@ -156,14 +160,15 @@ namespace OODProject
 
         private void SeekBar_PreviewMouseUp(object sender, MouseButtonEventArgs e)
         {
-            //Restart video at new timestamp
-            //textbox resumes updating
+            //Restart video at new slider position
+            //Re-enable slider sync. Textbox resumes updating
             isDraggingSlider = false;
             Player.Position = TimeSpan.FromSeconds(SeekBar.Value);
         }
 
         private void Timer_Tick(object sender, EventArgs e)
         {
+            //keep the seekbar updated in sync with the video
             if (!isDraggingSlider && Player.Source != null && Player.NaturalDuration.HasTimeSpan)
             {
                 SeekBar.Value = Player.Position.TotalSeconds;
@@ -175,7 +180,10 @@ namespace OODProject
             if (PlaylistListBox.SelectedIndex >= 0)
             {
                 currentIndex = PlaylistListBox.SelectedIndex;   
-                PlaySelectedMedia();                              
+                PlaySelectedMedia();
+
+                //SelectionChanged is firing twice, skipping every second video
+                //2 selections, First is removing the current video, Second is assinging the new video
                 Debug.WriteLine("SelectionChanged fired");
             }
 
@@ -208,7 +216,8 @@ namespace OODProject
 
         private void btn_OpenPlaylist_Click(object sender, RoutedEventArgs e)
         {
-            //using Sytem.Windows.Forms
+            //using System.Windows.Forms but theres a naming conflict with WPF
+            //so use WinForms alias
             var dialog = new WinForms.FolderBrowserDialog();
 
             if (dialog.ShowDialog() == WinForms.DialogResult.OK)
@@ -237,7 +246,7 @@ namespace OODProject
                 }
                 RefreshSource();
                 currentIndex = 0;
-                PlaylistListBox.SelectedIndex = 0;
+                PlaylistListBox.SelectedIndex = currentIndex;
             }
 
         }
@@ -246,6 +255,18 @@ namespace OODProject
         {
             PlaylistListBox.ItemsSource = null;
             PlaylistListBox.ItemsSource = playlist;
+        }
+
+        private void btnLoop_Click(object sender, RoutedEventArgs e)
+        {
+            if(loopEnabled)
+            {
+                loopEnabled = false;
+            }
+            else
+            {
+                loopEnabled = true;
+            }
         }
     }
 
