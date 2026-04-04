@@ -27,6 +27,7 @@ namespace OODProject
         private List<MediaItem> playlist = new List<MediaItem>();
         private int currentIndex = -1;//no file selected at start
         private bool loopEnabled = false;
+        private bool shuffleEnabled = false;
 
         public MainWindow()
         {
@@ -63,6 +64,14 @@ namespace OODProject
         {
             SeekBar.Value = 0;
 
+            //shuffle if button is checked
+            if (shuffleEnabled)
+            {
+                PlayRandomItem();
+                return;
+            }
+
+
             //Playback ended
             //Play next media file in playlist            
             if (currentIndex < playlist.Count - 1)
@@ -83,6 +92,7 @@ namespace OODProject
                 }
             }
         }
+
 
         private void PlayNextItem()
         {
@@ -267,6 +277,34 @@ namespace OODProject
             {
                 loopEnabled = true;
             }
+        }
+
+        private void btnShuffle_Checked(object sender, RoutedEventArgs e)
+        {
+            shuffleEnabled = true;
+        }
+
+        private void btnShuffle_Unchecked(object sender, RoutedEventArgs e)
+        {
+            shuffleEnabled = false;
+        }
+
+        private void PlayRandomItem()
+        {
+            if (playlist.Count <= 1)
+                return;
+
+            Random rand = new Random();
+            int nextIndex;
+
+            do
+            {
+                nextIndex = rand.Next(0, playlist.Count);
+            }
+            while (nextIndex == currentIndex); // avoid repeating the same item
+
+            currentIndex = nextIndex;
+            PlaylistListBox.SelectedIndex = nextIndex; // triggers playback
         }
     }
 
