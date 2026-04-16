@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -28,13 +29,16 @@ namespace OODProject
         private int currentIndex = -1;//no file selected at start
         private bool loopEnabled = false;
         private bool shuffleEnabled = false;
+        private bool isPlaying = false;
+        private string favoritesPath = @"../../../favorites.json";
+        private string historyPath = @"../../../history.json";
 
         public MainWindow()
         {
             InitializeComponent();
 
-            //Timer updates seek bar every 500 milliseconds           
-            timer.Interval = TimeSpan.FromMilliseconds(500);
+            //Timer updates seek bar every 100 milliseconds           
+            timer.Interval = TimeSpan.FromMilliseconds(100);
             timer.Tick += Timer_Tick;//Setting up event via code
 
             //For MediaElement 
@@ -45,6 +49,12 @@ namespace OODProject
             SeekBar.ValueChanged += SeekBar_ValueChanged;
             SeekBar.PreviewMouseDown += SeekBar_PreviewMouseDown;
             SeekBar.PreviewMouseUp += SeekBar_PreviewMouseUp;
+        }
+
+        private void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            //to listen for keyboard input
+            this.Focus();
         }
 
 
@@ -117,9 +127,10 @@ namespace OODProject
                 MediaItem mi = playlist[currentIndex];
                 Player.Source = new Uri(mi.FilePath);
                 Player.Play();
+                isPlaying = true;
+                UpdateHistory(mi);
             }
         }
-
 
         private void Player_MediaFailed(object sender, ExceptionRoutedEventArgs e)
         {
@@ -129,23 +140,24 @@ namespace OODProject
 
         private void btnRewind_Click(object sender, RoutedEventArgs e)
         {
-            //get current timestamp and rewind 5000 milliseconds
-            Player.Position -= TimeSpan.FromSeconds(5);
+            Rewind();
         }
 
         private void btnPlay_Click(object sender, RoutedEventArgs e)
         {
             Player.Play();
+            isPlaying = true;
         }
 
         private void btnPause_Click(object sender, RoutedEventArgs e)
         {
-            Player.Pause();
+            TogglePause();
+            isPlaying = false;
         }
 
         private void btnFastForward_Click(object sender, RoutedEventArgs e)
         {
-            Player.Position += TimeSpan.FromSeconds(5);
+            FastForward();
         }
 
         private void SeekBar_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -166,6 +178,35 @@ namespace OODProject
         {
             //stop updating textbox
             isDraggingSlider = true;
+
+            //if the user clicks the Thumb specifically
+            //then drag the slider. Normal behaviour
+            DependencyObject sneed = e.OriginalSource as DependencyObject;
+            var thumb = FindAncestor<System.Windows.Controls.Primitives.Thumb>(sneed);
+            if (thumb != null)
+                return;
+
+
+            //if they click any part of the track, override behaviour and jump to that point
+            //same logic as volume slider
+            Slider slider = sender as Slider;
+
+            //get clicked "target" for the slider
+            System.Windows.Point clickPoint = e.GetPosition(slider);
+
+            //only care about the X coordinate. The horizontal.
+            //get its position as a fraction of the overall seekbar and set to that value
+            double ratio = clickPoint.X / slider.ActualWidth;
+            double newValue = slider.Minimum + (ratio * (slider.Maximum - slider.Minimum));
+            slider.Value = newValue;
+
+            //set player position and playback
+            Player.Position = TimeSpan.FromSeconds(newValue);
+            Player.Play();
+
+            //override default behaviours
+            e.Handled = true;
+
         }
 
         private void SeekBar_PreviewMouseUp(object sender, MouseButtonEventArgs e)
@@ -207,7 +248,7 @@ namespace OODProject
             if (dialog.ShowDialog() == true)
             {
                 //Simplify as MediaItem
-                var item = new MediaItem
+                MediaItem item = new MediaItem
                 {
                     Title = System.IO.Path.GetFileName(dialog.FileName),
                     FilePath = dialog.FileName
@@ -258,6 +299,7 @@ namespace OODProject
                 currentIndex = 0;
                 PlaylistListBox.SelectedIndex = currentIndex;
             }
+            this.Focus();//return focus to the app window
 
         }
 
@@ -301,10 +343,261 @@ namespace OODProject
             {
                 nextIndex = rand.Next(0, playlist.Count);
             }
-            while (nextIndex == currentIndex); // avoid repeating the same item
+            while (nextIndex == currentIndex); //do not repeat the same media
 
             currentIndex = nextIndex;
-            PlaylistListBox.SelectedIndex = nextIndex; // triggers playback
+            PlaylistListBox.SelectedIndex = nextIndex; //begin playback
+        }
+
+        private void VolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            //volume control
+            Player.Volume = VolumeSlider.Value;
+        }
+
+        private void VolumeSlider_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            //if the user clicks the Thumb specifically
+            //then drag the slider. Normal behaviour
+            DependencyObject sneed = e.OriginalSource as DependencyObject;
+            var thumb = FindAncestor<System.Windows.Controls.Primitives.Thumb>(sneed);
+            if (thumb != null)
+                return;
+
+            //if they click any part of the track, override behaviour and jump to that point
+            //set the volume with a single click
+            Slider slider = sender as Slider;
+
+            //get clicked "target" for the slider
+            System.Windows.Point clickPoint = e.GetPosition(slider);
+
+            //only care about the X coordinate. The horizontal.
+            //get its position as a fraction of the overall volume and set to that value
+            double ratio = clickPoint.X / slider.ActualWidth;
+            double newValue = slider.Minimum + (ratio * (slider.Maximum - slider.Minimum));
+            slider.Value = newValue;
+
+            //override default behaviours
+            e.Handled = true;
+
+        }
+
+        private static T FindAncestor<T>(DependencyObject current) where T : DependencyObject
+        {
+            //clicking the thumb of the slider is not straightforward due to other elements (grids, borders)
+            //need to check the 'visual tree' of elements and get the parent source, the thumb
+            while (current != null)
+            {
+                //if current is the Thumb, return it
+                //else keep getting the parent until we find it
+                if (current is T)
+                    return (T)current;
+
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return null;
+        }
+
+        private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            //why does previewkeydown work regardless of focus?
+            //but keydown doesn't
+            if (e.Key == Key.Space)
+            {
+                //press spacebar to play/pause
+                TogglePause();
+                e.Handled = true;
+            }
+
+            if (e.Key == Key.Escape)
+            {
+                //press 'esc' key to terminate
+                System.Windows.Application.Current.Shutdown();
+                e.Handled = true;
+            }
+
+            if (e.Key == Key.Right)
+            {
+                FastForward();
+                e.Handled = true;
+                return;
+            }
+
+            // Left Arrow → rewind 5 seconds
+            if (e.Key == Key.Left)
+            {
+                Rewind();
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Down)
+            {
+                PlayNextMedia();
+                e.Handled = true;
+                return;
+            }
+
+            // Up Arrow → previous video
+            if (e.Key == Key.Up)
+            {
+                PlayPreviousMedia();
+                e.Handled = true;
+                return;
+            }
+
+        }
+
+        private void PlayPreviousMedia()
+        {
+            //if we're at the start of the playlist, do nothing
+            if (currentIndex<=0)
+                return;
+
+            //otherwise, decrement the index and playback
+            currentIndex--;
+            PlaylistListBox.SelectedIndex = currentIndex;
+            PlaySelectedMedia();
+        }
+
+        private void PlayNextMedia()
+        {
+            //if we're at the end of the playlist, do nothing
+            if (currentIndex >= playlist.Count)
+                return;
+
+            //otherwise, increment the index and playback
+            currentIndex++;
+            PlaylistListBox.SelectedIndex = currentIndex;
+            PlaySelectedMedia();
+        }
+
+        private void FastForward()
+        {
+            //get current timestamp and forward 3000 milliseconds
+            Player.Position += TimeSpan.FromSeconds(3);
+            isPlaying = true;
+        }
+
+        private void Rewind()
+        {
+            //get current timestamp and rewind 3000 milliseconds
+            Player.Position -= TimeSpan.FromSeconds(3);
+            isPlaying = true;
+        }
+
+        private void TogglePause()
+        {
+            if (isPlaying)
+            {
+                Player.Pause();
+                isPlaying = false;
+            }
+            else
+            {
+                Player.Play();
+                isPlaying = true;
+            }
+        }
+
+        private void btnSaveFavorite_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentIndex < 0 || currentIndex >= playlist.Count)
+            {
+                System.Windows.MessageBox.Show("No media is currently loaded");
+                return;
+            }
+
+            //Write MediaItem info to a JSON file
+            MediaItem im = playlist[currentIndex];
+            List<MediaItem>? favorites = new List<MediaItem>();
+
+            //load file if it exists
+            if (File.Exists(favoritesPath))
+            {
+                string json = File.ReadAllText(favoritesPath);
+                favorites = JsonSerializer.Deserialize<List<MediaItem>>(json);
+            }
+
+            //check for duplicates
+            if (!favorites.Any(f => f.Title == im.Title))
+            {
+                //It's a new addition to favorites
+                favorites.Add(im);
+            }
+            else
+            {
+                System.Windows.MessageBox.Show("File is already favorited", "Duplicate", MessageBoxButton.OK);
+                return;
+            }
+
+            //write to JSON file
+            JsonSerializerOptions options = new JsonSerializerOptions
+            {
+                WriteIndented = true//makes it readable with line breaks and indentation
+            };
+
+            string output = JsonSerializer.Serialize(favorites, options);
+            File.WriteAllText(favoritesPath, output);
+            System.Windows.MessageBox.Show("Added to favorites", "Success", MessageBoxButton.OK);
+        }
+
+        private void btnLoadFavorites_Click(object sender, RoutedEventArgs e)
+        {
+            if (!File.Exists(favoritesPath))
+            {
+                System.Windows.MessageBox.Show("File does not exist","Error",MessageBoxButton.OK);
+                return;
+            }
+
+            //Load favorites
+            string json = File.ReadAllText(favoritesPath);
+            List<MediaItem> favorites = JsonSerializer.Deserialize<List<MediaItem>>(json);
+
+            if (favorites.Count == 0)
+            {
+                System.Windows.MessageBox.Show("No favorites to load","Error",MessageBoxButton.OK);
+                return;
+            }
+
+            playlist.Clear();
+            playlist.AddRange(favorites);//safer than using '='?
+            RefreshSource();
+
+            //trigger playback
+            currentIndex = 0;
+            PlaylistListBox.SelectedIndex = 0;
+
+        }
+        private void UpdateHistory(MediaItem mi)
+        {
+            //Log viewing history to a JSON file
+            List<HistoryItem>? historyList = new List<HistoryItem>();
+
+            //Load file if it exists
+            if (File.Exists(historyPath))
+            {
+                string json = File.ReadAllText(historyPath);
+                historyList = JsonSerializer.Deserialize<List<HistoryItem>>(json);
+            }
+            
+            //add current mediaItem plus time
+            historyList.Add( new HistoryItem()
+            {
+                Title = mi.Title,
+                FilePath = mi.FilePath,
+                TimeStamp = DateTime.Now
+            });           
+
+            //write to JSON file
+            JsonSerializerOptions options = new JsonSerializerOptions
+            {
+                WriteIndented = true//makes it readable with line breaks and indentation
+            };
+
+            string output = JsonSerializer.Serialize(historyList, options);
+            File.WriteAllText(historyPath, output);
+            Debug.WriteLine("history.json updated");
         }
     }
 
@@ -312,5 +605,13 @@ namespace OODProject
     {
         public string Title { get; set; }
         public string FilePath { get; set; }
+    }
+    public class HistoryItem
+    {
+        public string? Title { get; set; }
+        public string? FilePath { get; set; }
+        public DateTime? TimeStamp { get; set; }
+
+        public HistoryItem() { }
     }
 }
